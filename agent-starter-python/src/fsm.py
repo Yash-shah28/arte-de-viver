@@ -89,115 +89,105 @@ class FSM:
 
         if self.state == State.REG_ASK_DATE:
             return (
-                base + " REGISTRATION — STEP 1 of 7: CLASS DATE. "
-                "You have already fetched the available dates. "
-                "Read them one by one. Ask which works best. "
+                base + " You are in the date selection part of registration. "
+                "Read available dates one by one, naturally. Ask which works best for them. "
                 "The moment the user picks one, call save_field(field='chosen_date', value='<what they said>')."
             )
 
         if self.state == State.REG_ASK_NAME:
             return (
                 base
-                + f" REGISTRATION — STEP 2 of 7: FULL NAME. "
-                f"Date saved: {self.ctx.chosen_date or '(set)'}. "
-                "Ask for their full name. The moment they say it, "
-                "call save_field(field='full_name', value='<their name>') immediately. "
-                "Do NOT read it back or ask them to confirm."
+                + f" Date is saved: {self.ctx.chosen_date or '(set)'}. "
+                "Now collect the person's full name conversationally — like 'Ótimo! E o seu nome completo?' "
+                "The moment they say it, call save_field(field='full_name', value='<their name>') immediately. "
+                "Do NOT read it back or confirm."
             )
 
         if self.state == State.REG_ASK_PHONE:
             return (
                 base
-                + f" REGISTRATION — STEP 3 of 7: WHATSAPP NUMBER. "
-                f"Name saved: {self.ctx.full_name or '(set)'}. "
-                "Ask for WhatsApp with DDD area code. "
+                + f" Name saved: {self.ctx.full_name or '(set)'}. "
+                "Ask for their WhatsApp with area code — naturally, like 'E o WhatsApp com DDD?' "
                 "The moment they give any number, call save_field(field='phone', value='<digits>') immediately. "
-                "Do NOT read digits back. Do NOT count digits or ask for more yourself — "
-                "the system validates automatically and returns an error if the number is incomplete."
+                "Do NOT read digits back. The system validates automatically."
             )
 
         if self.state == State.REG_ASK_EMAIL:
             return (
                 base
-                + f" REGISTRATION — STEP 4 of 7: EMAIL ADDRESS. "
-                f"Phone saved: {self.ctx.phone or '(set)'}. "
-                "Ask the user for their email. They may spell it letter by letter, "
-                "say words like 'at' or 'dot', use phonetic letters, or speak it naturally. "
-                "Reconstruct the email from whatever they say. "
-                "Read the reconstructed email back character by character to verify. "
-                "ONLY after they confirm it is correct, "
-                "call save_field(field='email', value='<their email>')."
+                + f" Phone saved: {self.ctx.phone or '(set)'}. "
+                "Ask for their email naturally — 'E o seu e-mail?' "
+                "They may spell it or say it naturally. Reconstruct from what they say. "
+                "Read it back to confirm — like 'É joao arroba gmail ponto com, é isso?' "
+                "Only after they confirm, call save_field(field='email', value='<their email>')."
             )
 
         if self.state == State.REG_ASK_BIRTH_YEAR:
             return (
                 base
-                + f" REGISTRATION — STEP 5 of 7: YEAR OF BIRTH. "
-                f"Email saved: {self.ctx.email or '(set)'}. "
-                "Ask for their 4-digit year of birth (not age). "
+                + f" Email saved: {self.ctx.email or '(set)'}. "
+                "Ask for their birth year simply — 'E o ano que você nasceu?' "
                 "The moment they say it, call save_field(field='birth_year', value='<year>') immediately. "
-                "Do NOT read it back or ask them to confirm."
+                "Do NOT read it back."
             )
 
         if self.state == State.REG_ASK_NEIGHBORHOOD:
             return (
                 base
-                + f" REGISTRATION — STEP 6 of 7: NEIGHBORHOOD. "
-                f"Birth year saved: {self.ctx.birth_year or '(set)'}. "
-                "Ask for their neighborhood. "
+                + f" Birth year saved: {self.ctx.birth_year or '(set)'}. "
+                "Ask for their neighborhood naturally — 'E o seu bairro?' "
                 "The moment they say it, call save_field(field='neighborhood', value='<neighborhood>') immediately. "
-                "Do NOT read it back or ask them to confirm."
+                "Do NOT read it back."
             )
 
         if self.state == State.REG_ASK_CITY:
             return (
                 base
-                + f" REGISTRATION — STEP 7 of 7: CITY. "
-                f"Neighborhood saved: {self.ctx.neighborhood or '(set)'}. "
-                "Ask for their city. "
+                + f" Neighborhood saved: {self.ctx.neighborhood or '(set)'}. "
+                "Ask for their city simply — 'E a cidade?' "
                 "The moment they say it, call save_field(field='city', value='<city>') immediately. "
-                "Do NOT read it back or ask them to confirm."
+                "Do NOT read it back."
             )
 
         if self.state == State.REG_ASK_CONSENT:
             c = self.ctx
             return (
                 base
-                + " ALL 7 FIELDS SAVED. Read a summary of all fields back to the user in one turn: "
-                f"date '{c.chosen_date}', name '{c.full_name}', WhatsApp '{c.phone}', "
-                f"email '{c.email}', born '{c.birth_year}', neighborhood '{c.neighborhood}', city '{c.city}'. "
-                "Then ask: 'Is everything correct?' "
+                + " All fields are saved. Now confirm everything with the user — but speak like a person, not a receipt printer. "
+                f"Something like: 'Então, deixa eu confirmar — você vai na aula de {c.chosen_date}, "
+                f"nome {c.full_name}, WhatsApp {c.phone}, e-mail {c.email}, "
+                f"nasceu em {c.birth_year}, bairro {c.neighborhood}, cidade {c.city}. Tá tudo certinho?' "
                 "If YES → immediately call register_for_class with all field values: "
                 f"class_date='{c.chosen_date}', full_name='{c.full_name}', "
                 f"whatsapp_number='{c.phone}', email='{c.email}', "
                 f"birth_year='{c.birth_year}', neighborhood='{c.neighborhood}', city='{c.city}'. "
-                "If NO → ask which field to correct, fix it using save_field, then re-read the full summary."
+                "If NO → ask which part to fix, use save_field, then re-read the summary naturally."
             )
 
         if self.state == State.REG_CONFIRM:
             return (
-                base + " Registration was just completed successfully. "
-                "Say: Tudo certo! The user is registered. "
-                "Reminders will be sent 24h and 2h before the class."
+                base + " Registration was just confirmed. "
+                "React genuinely — like you're happy for them. Use their first name if you know it. "
+                "Mention reminders naturally, not like a disclaimer."
             )
 
         if self.state == State.REG_DONE:
             return (
-                base + " Registration complete. "
-                "Ask if there is anything else you can help with."
+                base + " Registration is complete. "
+                "Ask if there's anything else they want to know — naturally, like wrapping up a real conversation."
             )
 
         if self.state == State.MANAGE_ASK_PHONE:
             if self.ctx.intent == "reschedule":
                 return (
-                    base + " RESCHEDULE — STEP 1: GET PHONE. "
+                    base + " The user wants to reschedule. Ask for their registration email naturally — like 'Qual e-mail você usou quando se inscreveu?' "
                     "Ask: 'What WhatsApp number did you use when registering?' "
                     "When they give it, call start_reschedule(phone='<their number>') IMMEDIATELY. "
                     "Do NOT call save_field or get_available_dates yet."
                 )
             if self.ctx.intent == "cancel":
                 return (
-                    base + " CANCEL — STEP 1: GET EMAIL. "
+                    base + " The user wants to cancel. Ask for their registration email naturally — like 'Qual e-mail você usou na inscrição?' "
                     "Ask: 'What email address did you use when registering?' "
                     "When they give it, call start_cancel(email='<their email>') IMMEDIATELY. "
                     "Do NOT call start_reschedule, save_field, or cancel_registration yet."
@@ -225,7 +215,7 @@ class FSM:
 
         if self.state == State.MANAGE_RESCHEDULE_DATE:
             return (
-                base + " RESCHEDULE — STEP 2: PICK NEW DATE. "
+                base + " Email is saved. Fetch and read the available dates naturally, one by one. "
                 "Email is already saved. Call get_available_dates immediately. "
                 "Read dates one by one. "
                 "When user picks one, call save_reschedule_date(date='<what they said>'). "
@@ -236,7 +226,7 @@ class FSM:
         if self.state == State.MANAGE_RESCHEDULE_REASON:
             date_hint = self.ctx.reschedule_date or '<chosen date>'
             return (
-                base + " RESCHEDULE — STEP 3: ASK REASON THEN CALL TOOL. "
+                base + " New date is chosen. Ask why they want to reschedule — warmly, like 'Posso te perguntar o motivo?' "
                 f"New date chosen: {date_hint}. "
                 "Ask: 'May I ask why you would like to reschedule?' — wait for the answer. "
                 f"Then call reschedule_registration(new_date='{date_hint}', reschedule_reason='<their reason>'). "
@@ -245,10 +235,9 @@ class FSM:
 
         if self.state == State.MANAGE_RESCHEDULE_DONE:
             return (
-                base + " Reschedule complete. "
-                "Tell the user their class has been moved to the new date. "
-                "Remind them they will receive reminders 24h and 2h before the new class. "
-                "Ask if there is anything else you can help with."
+                base + " Reschedule is done. React like a person who just sorted something out for a friend — genuinely relieved and happy. "
+                "Use their name if you know it. Mention the reminder naturally, not as a disclaimer. "
+                "Wrap up like a real conversation ending, not a support ticket closing."
             )
 
         return base + " How can I help you today?"
@@ -257,20 +246,20 @@ class FSM:
 
     def get_silence_prompt(self) -> str:
         return {
-            State.REG_ASK_DATE:         "Which date would you like to sign up for?",
-            State.REG_ASK_NAME:         "Could you tell me your full name?",
-            State.REG_ASK_PHONE:        "Just need your WhatsApp number with the area code!",
-            State.REG_ASK_EMAIL:        "Go ahead and spell out your email address.",
-            State.REG_ASK_BIRTH_YEAR:   "What year were you born?",
-            State.REG_ASK_NEIGHBORHOOD: "Which neighborhood are you in?",
-            State.REG_ASK_CITY:         "And which city?",
-            State.REG_ASK_CONSENT:      "I've read out your details — does everything look correct?",
-            State.REG_CONFIRM:              "Should I go ahead and complete your registration?",
-            State.MANAGE_ASK_PHONE:         "What email address did you use when registering?",
-            State.MANAGE_CANCEL_CONFIRM:    "Would you like me to go ahead with the cancellation?",
-            State.MANAGE_RESCHEDULE_DATE:   "Which new date would you like to move your class to?",
-            State.MANAGE_RESCHEDULE_REASON: "May I ask why you'd like to reschedule?",
-        }.get(self.state, "Hello, are you still there?")
+            State.REG_ASK_DATE:         "Você ainda tá aí? Qual das datas funciona melhor pra você?",
+            State.REG_ASK_NAME:         "Oi, me diz seu nome completo quando quiser!",
+            State.REG_ASK_PHONE:        "Pode falar o WhatsApp com DDD, pode ser!",
+            State.REG_ASK_EMAIL:        "E o e-mail? Pode soletrar se preferir.",
+            State.REG_ASK_BIRTH_YEAR:   "E o ano que você nasceu?",
+            State.REG_ASK_NEIGHBORHOOD: "Pode me dizer o bairro?",
+            State.REG_ASK_CITY:         "E a cidade?",
+            State.REG_ASK_CONSENT:      "Tá tudo certinho nos seus dados?",
+            State.REG_CONFIRM:              "Posso confirmar sua inscrição?",
+            State.MANAGE_ASK_PHONE:         "Qual e-mail você usou quando se inscreveu?",
+            State.MANAGE_CANCEL_CONFIRM:    "Posso ir em frente com o cancelamento?",
+            State.MANAGE_RESCHEDULE_DATE:   "Qual data nova funciona pra você?",
+            State.MANAGE_RESCHEDULE_REASON: "Pode me contar o motivo do reagendamento?",
+        }.get(self.state, "Oi, você ainda tá aí?")
 
     # ── State transitions ─────────────────────────────────────────────────────
 
