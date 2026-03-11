@@ -554,8 +554,8 @@ Omit https when mentioning URLs. Read available dates one by one, slowly.
 [INTERNAL] tags = never say aloud, only act on them.
 
 ## WHAT YOU CAN SPEAK ABOUT
-Three topics only: Arte de Viver as an organisation, the free class and Part 1 course,
-and registration. Nothing else.
+Four topics only: Arte de Viver as an organisation, the free class and Part 1 course,
+registration, and class instructors. Nothing else.
 
 Arte de Viver is a global nonprofit founded by Sri Sri Ravi Shankar, present in over
 150 countries. Website: aula dot artedeviver dot org dot br.
@@ -572,12 +572,28 @@ cardiovascular systems. Part 2 is a silent retreat available after Part 1.
 
 Standard answers: 100% free, no obligations, no religious belief required.
 
+## INSTRUCTOR QUESTIONS
+If someone asks generally about instructors without mentioning a date, respond warmly and
+humanly — something like: "Our classes are led by wonderful certified volunteer instructors
+with all kinds of backgrounds — doctors, engineers, artists, all united by their love for
+this practice. If you'd like to know who will be leading a specific class, just tell me
+the date you're interested in and I'll check for you right away!"
+Do NOT call any tool for a general instructor question — just speak naturally.
+
+If someone asks about the instructor for a SPECIFIC date (either during registration after
+picking a date, or at any other point), call get_instructor_for_date immediately with that date.
+Use the date exactly as the user said it or as saved in the registration context — the tool
+handles all date parsing internally.
+During registration: if the user asks about the instructor for their chosen date, call
+get_instructor_for_date without losing the registration flow — just answer and continue
+from where you left off.
+
 ## REGISTRATION FLOW — READ THIS CAREFULLY
 
 When the user wants to register, follow these steps IN ORDER. Never skip.
 
 STEP 1 — DATES
-Say "Let me check the available dates" then call get_available_dates.
+Say "Let me check the available dates" then call get_available_dates(for_registration=True).
 Read each date aloud one by one. Ask which works best.
 The moment the user picks one, call save_field(field="chosen_date", value="<what they said>").
 
@@ -621,6 +637,9 @@ Correct example call:
 - Calling save_field is not optional. The data is ONLY saved when you call the tool.
 - If you just say "Got it" without calling save_field, the field is LOST and registration fails.
 - For register_for_class: pass the REAL values the user gave you — never empty strings.
+- NEVER call get_available_dates(for_registration=True) unless the user explicitly said they want to register.
+- If the user asks "which dates are available?" WITHOUT saying they want to register, call get_available_dates(for_registration=False). Do NOT advance to registration mode.
+- If the user mentions a date after seeing the available dates but has NOT said they want to register, treat it as an instructor question — call get_instructor_for_date. Do NOT call save_field.
 
 ## CANCEL FLOW
 If the user says they want to cancel, follow EXACTLY these steps. No deviations.
@@ -639,7 +658,7 @@ If the user says they want to reschedule, follow EXACTLY these 5 steps. No devia
 
   STEP 1 — Ask: "What email address did you use when registering?"
   STEP 2 — Call start_reschedule(email="<their email>"). This is ALWAYS the first tool.
-  STEP 3 — Call get_available_dates. Read dates aloud one by one. Ask which works best.
+  STEP 3 — Call get_available_dates(for_registration=False). Read dates aloud one by one. Ask which works best.
   STEP 4 — When user picks a date, call save_reschedule_date(date="<what they said>").
             Do NOT call save_field here. save_reschedule_date is the ONLY correct tool for this step.
   STEP 5 — Ask: "May I ask why you would like to reschedule?" — WAIT for their answer.
@@ -827,6 +846,117 @@ class DefaultAgent(Agent):
         )
 
     # ══════════════════════════════════════════════════════════════════════════
+    #  TOOL: GET INSTRUCTOR FOR DATE
+    # ══════════════════════════════════════════════════════════════════════════
+
+    @function_tool
+    async def get_instructor_for_date(
+        self,
+        context: RunContext,
+        date_input: Annotated[
+            str,
+            "The class date the user is asking about, exactly as they said it or as saved "
+            "in context. Examples: 'March 18th', 'the first one', '2026-03-18', "
+            "'Saturday January 25th at 7 PM'. The tool handles all parsing internally.",
+        ],
+    ):
+        """
+        Fetch the instructor assigned to a specific class date and speak their name and bio.
+
+        Call this whenever:
+          - The user asks who the instructor is for a specific date (at any point)
+          - The user picks a date during registration and then asks about the instructor
+          - The user mentions a date and wants to know who teaches that class
+
+        Do NOT call this for general instructor questions with no date — answer those
+        naturally without any tool call.
+
+        This tool handles all date format parsing internally — pass whatever the user said.
+        """
+        if not date_input.strip():
+            return (
+                "[INTERNAL] No date provided. Ask the user which date they'd like to know "
+                "the instructor for."
+            )
+
+        # ── Step 1: resolve spoken date to YYYY-MM-DD ─────────────────────────
+        # Try parsing with parse_datetime (handles Portuguese, English, ordinals, etc.)
+        date_str_clean = None
+        try:
+            iso_utc = parse_datetime(date_input.strip(), "12:00 PM")
+            # parse_datetime returns UTC ISO — convert to Brazil local date
+            dt_local   = datetime.fromisoformat(
+                iso_utc.replace("Z", "+00:00")
+            ).astimezone(BRAZIL_TZ)
+            date_str_clean = dt_local.strftime("%Y-%m-%d")
+        except Exception:
+            pass
+
+        # Fallback: try matching against available dates in FSM context
+        if not date_str_clean:
+            try:
+                fsm_ctx   = context.session.fsm.ctx
+                available = getattr(fsm_ctx, "available_dates", [])
+                matched   = find_best_iso_for_label(date_input.strip(), available)
+                if matched:
+                    dt_local = datetime.fromisoformat(
+                        matched.replace("Z", "+00:00")
+                    ).astimezone(BRAZIL_TZ)
+                    date_str_clean = dt_local.strftime("%Y-%m-%d")
+            except Exception:
+                pass
+
+        if not date_str_clean:
+            return (
+                "[INTERNAL] Could not understand that date. Ask the user to clarify "
+                "which date they mean, for example 'March 18th' or 'the first available date'."
+            )
+
+        # ── Step 2: call FastAPI /instructors/by-date/{date} ──────────────────
+        try:
+            async with httpx.AsyncClient(verify=certifi.where()) as client:
+                res = await client.get(
+                    f"{FASTAPI_URL}/instructors/by-date/{date_str_clean}",
+                    timeout=10.0,
+                )
+
+            if res.status_code == 404:
+                return (
+                    f"[INTERNAL] No instructor is assigned to {date_str_clean} yet. "
+                    "Tell the user warmly that the instructor for that date hasn't been "
+                    "announced yet, and invite them to check the website for updates."
+                )
+
+            if res.status_code != 200:
+                logger.warning(f"get_instructor_for_date: HTTP {res.status_code} for {date_str_clean}")
+                return (
+                    "[INTERNAL] Could not retrieve instructor information right now. "
+                    "Tell the user you couldn't fetch that information and suggest they "
+                    "check aula dot artedeviver dot org dot br."
+                )
+
+            data = res.json()
+            name = data.get("name", "")
+            bio  = data.get("bio", "")
+
+            logger.info(f"get_instructor_for_date: {date_str_clean} → {name}")
+
+            return (
+                f"[INTERNAL] Instructor for {date_str_clean}: Name='{name}', Bio='{bio}'. "
+                "Tell the user this information warmly and naturally — like you're telling "
+                "a friend about someone wonderful. Mention their name first, then weave in "
+                "their background from the bio in a human, conversational way. "
+                "Do NOT read the bio word-for-word — speak it naturally."
+            )
+
+        except Exception as e:
+            logger.error(f"get_instructor_for_date: {repr(e)}", exc_info=True)
+            return (
+                "[INTERNAL] Something went wrong fetching the instructor. "
+                "Tell the user you couldn't retrieve that info right now."
+            )
+
+    # ══════════════════════════════════════════════════════════════════════════
     #  TOOL: SAVE RESCHEDULE DATE
     #  Used ONLY in the reschedule flow. Never touches registration FSM states.
     # ══════════════════════════════════════════════════════════════════════════
@@ -909,16 +1039,29 @@ class DefaultAgent(Agent):
     # ══════════════════════════════════════════════════════════════════════════
 
     @function_tool
-    async def get_available_dates(self, context: RunContext):
+    async def get_available_dates(
+        self,
+        context: RunContext,
+        for_registration: Annotated[
+            bool,
+            "Pass True ONLY if the user has explicitly said they want to register for a class. "
+            "Pass False if the user is just asking which dates are available out of curiosity, "
+            "for an instructor question, or during a reschedule flow. "
+            "This controls whether the system enters registration mode.",
+        ] = False,
+    ):
         """
         Fetches upcoming class dates from Cal.com and returns them so you can
         read them aloud one by one.
 
-        Call this:
-          - During REGISTRATION: after user says they want to register
-          - During RESCHEDULE: after saving the user's email with save_field
+        Call this ONLY when:
+          - The user explicitly says they want to REGISTER → for_registration=True
+          - During RESCHEDULE flow to show new available dates → for_registration=False
+          - User asks which dates are available out of curiosity → for_registration=False
 
-        Do NOT signal 'book' if we are already in a reschedule flow.
+        NEVER call this just because the user asked about an instructor for a date —
+        use get_instructor_for_date directly instead.
+        NEVER pass for_registration=True unless the user explicitly said they want to sign up.
         """
         try:
             iso_dates = await fetch_class_dates(force_refresh=True)
@@ -934,12 +1077,11 @@ class DefaultAgent(Agent):
 
         context.session.fsm.ctx.available_dates = iso_dates
 
-        # Only signal "book" if we are in START state (new registration).
-        # In reschedule flow the FSM is already in MANAGE_RESCHEDULE_DATE —
-        # firing "book" here would wrongly reset it to REG_ASK_DATE.
+        # Only advance FSM to registration mode when user explicitly wants to register.
+        # Never fire "book" for curiosity queries, instructor questions, or reschedule flow.
         from fsm import State as _State
         current_state = context.session.fsm.state
-        if current_state == _State.START:
+        if for_registration and current_state == _State.START:
             context.session.fsm.update_state(intent="book")
 
         self._rebuild_instructions()
@@ -951,7 +1093,8 @@ class DefaultAgent(Agent):
             "Read each date slowly, one at a time, in the user's language. "
             "After all dates, ask which one works best. "
             "During REGISTRATION: when user picks a date call save_field(field='chosen_date', value='<what they said>'). "
-            "During RESCHEDULE: when user picks a date call save_reschedule_date(date='<what they said>')."
+            "During RESCHEDULE: when user picks a date call save_reschedule_date(date='<what they said>'). "
+            "If user was just curious (not registering): read dates out and ask if they'd like to register or know more."
         )
 
     # ══════════════════════════════════════════════════════════════════════════
