@@ -1,7 +1,6 @@
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from datetime import date
 
 from database import get_db, engine
 import models, schemas, crud
@@ -91,11 +90,14 @@ def get_instructor_by_name(name: str, db: Session = Depends(get_db)):
 
 
 # ── Get Instructor by Date ───────────────────────────────────────────────────
-@app.get("/instructors/by-date/{class_date}", response_model=schemas.InstructorOut)
-def get_instructor_by_date(class_date: date, db: Session = Depends(get_db)):
+@app.get("/instructors/by-date/{class_date:path}", response_model=schemas.InstructorOut)
+def get_instructor_by_date(class_date: str, db: Session = Depends(get_db)):
     """
     Returns the instructor assigned to a specific class date.
-    Date format: YYYY-MM-DD  e.g. 2026-03-18
+    Accepts:
+      - YYYY-MM-DD    e.g. 2026-07-09
+      - "D Month"     e.g. 9 July  (matches DB storage format)
+      - "D de Mês"    e.g. 9 de julho  (Portuguese, auto-converted)
     Returns 404 if no instructor is scheduled for that date.
     """
     instructor = crud.get_instructor_by_date(db, class_date)
