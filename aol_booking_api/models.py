@@ -21,4 +21,4 @@ class Instructor(Base):
 
     name        = Column(String, primary_key=True, index=True)
     bio         = Column(String, nullable=True)
-    event_dates = Column(ARRAY(Date), nullable=True)
+    event_dates = Column(ARRAY(String), nullable=True)  # stored as "9 July", "11 March", etc.
