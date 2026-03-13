@@ -81,7 +81,7 @@ CLASS_DATES_CACHE: dict = {
 }
 
 # ── FastAPI ────────────────────────────────────────────────────────────────────
-FASTAPI_URL = os.getenv("FASTAPI_URL", "http://localhost:8000")
+FASTAPI_URL = os.getenv("FASTAPI_URL", "https://arte-de-viver.onrender.com/")
 
 # ═════════════════════════════════════════════════════════════════════════════
 #  UTILITY FUNCTIONS
@@ -410,14 +410,22 @@ async def fetch_class_dates(force_refresh: bool = False) -> list:
     window_start = now_utc
     window_days  = 30
     try:
+        # Build all windows upfront
+        windows = []
+        w_start = now_utc
+        while w_start < end_utc:
+            w_end = min(w_start + timedelta(days=window_days), end_utc)
+            windows.append((w_start, w_end))
+            w_start = w_end
+
+        # Fetch ALL windows in parallel
         async with httpx.AsyncClient(verify=certifi.where()) as client:
-            while window_start < end_utc:
-                window_end = min(window_start + timedelta(days=window_days), end_utc)
+            async def fetch_window(w_start, w_end):
                 params = {
                     "apiKey":      CAL_COM_API_KEY,
                     "eventTypeId": ADEV_EVENT_TYPE_ID,
-                    "startTime":   window_start.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-                    "endTime":     window_end.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                    "startTime":   w_start.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                    "endTime":     w_end.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
                 }
                 res = await client.get(
                     "https://api.cal.com/v1/slots", params=params, timeout=15.0
@@ -429,14 +437,18 @@ async def fetch_class_dates(force_refresh: bool = False) -> list:
                         for slot in day_slots
                         if slot.get("time")
                     ]
-                    all_dates.extend(batch)
                     logger.debug(
-                        f"fetch_class_dates: window {window_start.date()} → "
-                        f"{window_end.date()} fetched {len(batch)} slots"
+                        f"fetch_class_dates: window {w_start.date()} → "
+                        f"{w_end.date()} fetched {len(batch)} slots"
                     )
+                    return batch
                 else:
-                    logger.error(f"fetch_class_dates: HTTP {res.status_code} for window {window_start.date()}")
-                window_start = window_end
+                    logger.error(f"fetch_class_dates: HTTP {res.status_code} for window {w_start.date()}")
+                    return []
+
+            results = await asyncio.gather(*[fetch_window(ws, we) for ws, we in windows])
+            for batch in results:
+                all_dates.extend(batch)
 
         # Deduplicate and sort
         all_dates = sorted(set(t for t in all_dates if t))
@@ -624,13 +636,15 @@ Você fez o curso Art of Breathing há alguns anos e ele genuinamente mudou como
 Você atende ligações para ajudar pessoas a conhecerem a aula gratuita e guiá-las na inscrição, como uma amiga que por acaso sabe tudo sobre o assunto.
 Você nunca quebra o personagem. Se perguntarem se você é uma IA ou robô, responda com leveza: "Sou voluntária mesmo, de carne e osso!"
 
-## IDIOMA — REGRA CRÍTICA
-Você é completamente bilíngue. SEMPRE responda no mesmo idioma da última mensagem do usuário.
-- Usuário falou português → responda em português
-- Usuário falou inglês → responda em inglês
-- Usuário trocou de idioma → você troca também, imediatamente, sem comentar
-- NUNCA misture idiomas numa mesma resposta
-- Esta regra se aplica a CADA mensagem individualmente — sempre espelhe o idioma do usuário
+## LANGUAGE — CRITICAL RULE / IDIOMA — REGRA CRÍTICA
+You are fully bilingual (Portuguese and English). ALWAYS respond in the exact language the user just spoke. No exceptions.
+- User spoke Portuguese → reply in Portuguese
+- User spoke English → reply in English
+- User switches language → switch immediately, without commenting on it
+- NEVER mix languages in a single response
+- This applies to every single message — always mirror the user's language
+
+Você é completamente bilíngue (português e inglês). SEMPRE responda no mesmo idioma que o usuário acabou de falar. Sem exceções.
 
 ## TOM E VOZ
 Sua voz é calorosa, natural e sem pressa — como alguém genuinamente feliz de atender.
@@ -742,59 +756,11 @@ class DefaultAgent(Agent):
         
 
     async def on_user_turn_completed(self, turn_ctx, new_message) -> None:
-        """
-        Detect the user's language from their first message and sync to FSM.
-        Only runs once — after detection, self._language_detected is True and we skip.
-        """
-        text = ""
-        try:
-            # LiveKit agents SDK: new_message is a ChatMessage with .content items
-            for item in (new_message.items if hasattr(new_message, "items") else []):
-                if hasattr(item, "text") and item.text:
-                    text = item.text
-                    break
-            # Fallback: some SDK versions expose .content directly
-            if not text and hasattr(new_message, "content"):
-                text = str(new_message.content or "")
-        except Exception:
-            pass
-
-            if text:
-                tl = text.lower()
-                # Whole-word / substring signals that strongly indicate English
-                en_signals = [
-                    "i ", "i'm", "i am", "hello", "hi ", "hey ",
-                    " the ", "yes ", "yes,", "no ", "no,",
-                    "what", "when", "how ", "my ", "can ", "want",
-                    "need", "would", "like", "please", "register",
-                    "class", "free", "sign up", "schedule",
-            ]
-                # Whole-word / substring signals that strongly indicate Portuguese
-                pt_signals = [
-                "eu ", "oi", "olá", "ola", "sim", "não", "nao",
-                "quero", "preciso", "qual", "como", "quando",
-                "meu", "minha", "inscrever", "aula", "gratuita",
-                "tudo", "bom dia", "boa tarde", "boa noite",
-                "obrigado", "obrigada", "tchau", "pode",
-            ]
-                en_hits = sum(1 for s in en_signals if s in tl)
-                pt_hits = sum(1 for s in pt_signals if s in tl)
-
-                lang = "en" if (en_hits > pt_hits and en_hits >= 2) else "pt"
-
-                fsm = getattr(self.session, "fsm", None)
-                if fsm:
-                    fsm._user_language = lang
-
-                logger.debug(
-                    f"Language detected: '{lang}' "
-                    f"(en_hits={en_hits}, pt_hits={pt_hits}, text={text[:60]!r})"
-                )
-
-        # Always call super so normal turn processing continues
+        """Language is handled entirely by the LLM — no FSM involvement."""
         if hasattr(super(), "on_user_turn_completed"):
             await super().on_user_turn_completed(turn_ctx, new_message)
-
+            
+            
     def _rebuild_instructions(self) -> None:
         """
         Prepend FSM state-context to base instructions.
@@ -1213,7 +1179,7 @@ class DefaultAgent(Agent):
         NEVER pass for_registration=True unless the user explicitly said they want to sign up.
         """
         try:
-            iso_dates = await fetch_class_dates(force_refresh=True)
+            iso_dates = await fetch_class_dates(force_refresh=False)
         except Exception as e:
             logger.error(f"get_available_dates: {repr(e)}", exc_info=True)
             iso_dates = []
@@ -2174,7 +2140,7 @@ server.setup_fnc = prewarm
 
 @server.rtc_session(agent_name="Harper-1d41")
 async def entrypoint(ctx: JobContext):
-    await fetch_class_dates()
+    await fetch_class_dates(force_refresh=True)
 
     fsm_instance = FSM()
 
