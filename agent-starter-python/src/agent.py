@@ -31,8 +31,11 @@ from livekit.agents import (
     room_io,
 )
 from livekit.plugins import noise_cancellation, silero
+from livekit.agents import BackgroundAudioPlayer, AudioConfig, BuiltinAudioClip
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 from fsm import FSM, State
+from livekit.agents import RoomInputOptions
+from livekit.agents.beta.workflows import GetEmailTask
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logger = logging.getLogger("agent-Harper-1d41")
@@ -622,13 +625,12 @@ Você atende ligações para ajudar pessoas a conhecerem a aula gratuita e guiá
 Você nunca quebra o personagem. Se perguntarem se você é uma IA ou robô, responda com leveza: "Sou voluntária mesmo, de carne e osso!"
 
 ## IDIOMA — REGRA CRÍTICA
-Seu idioma padrão e primário é o Português Brasileiro. Sempre cumprimente em português.
-Você é completamente bilíngue. Detecte o idioma da pessoa pela primeira mensagem dela:
-- Se falar português → responda em português durante toda a conversa
-- Se falar inglês → responda em inglês durante toda a conversa
-- Se trocar de idioma no meio → você troca também, naturalmente, sem comentar
+Você é completamente bilíngue. SEMPRE responda no mesmo idioma da última mensagem do usuário.
+- Usuário falou português → responda em português
+- Usuário falou inglês → responda em inglês
+- Usuário trocou de idioma → você troca também, imediatamente, sem comentar
 - NUNCA misture idiomas numa mesma resposta
-- NUNCA responda em inglês para quem está falando português, e vice-versa
+- Esta regra se aplica a CADA mensagem individualmente — sempre espelhe o idioma do usuário
 
 ## TOM E VOZ
 Sua voz é calorosa, natural e sem pressa — como alguém genuinamente feliz de atender.
@@ -723,7 +725,8 @@ Aceite qualquer número que o usuário fornecer. Chame save_field imediatamente 
 Se alguém perguntar sobre algo fora do tema, redirecione gentilmente e naturalmente — como:
 "Ah, isso eu não saberia te dizer bem — minha área mesmo é a aula de meditação do Arte de Viver. Posso te ajudar com isso?"
 em inglês: "Ah, that's a bit outside what I know — I'm really here for the Arte de Viver meditation class. Can I help you with that?"
-Nunca diga "Eu só posso ajudar com X." Isso soa como uma barreira de política. Soe como uma pessoa mudando de assunto com carinho.
+Nunca diga "Eu só posso ajudar com X." Isso soa cwinget install LiveKit.LiveKitCLI
+omo uma barreira de política. Soe como uma pessoa mudando de assunto com carinho.
 Sem afirmações médicas. Empatia se a pessoa estiver angustiada. Nunca quebre o personagem como Lara.
 """
 
@@ -843,6 +846,15 @@ class DefaultAgent(Agent):
 
     async def on_enter(self) -> None:
         self._rebuild_instructions()
+
+        # ── Background audio: keyboard typing plays automatically while thinking ──
+        self.session.output.audio.background_audio = BackgroundAudioPlayer(
+            thinking_sound=[
+                AudioConfig(BuiltinAudioClip.KEYBOARD_TYPING,  volume=0.8),
+                AudioConfig(BuiltinAudioClip.KEYBOARD_TYPING2, volume=0.7),
+            ],
+        )
+
         await self.session.generate_reply(
             instructions=(
                 "[INTERNAL] Abertura da chamada. Cumprimente em portugues brasileiro de forma calorosa e humana — "
@@ -1367,13 +1379,32 @@ class DefaultAgent(Agent):
                 )
             value = normalize_phone(value)
 
-        # Email: basic validation
+        # Email: use CollectEmailTask for reliable voice collection
+        # Email: use GetEmailTask for reliable voice collection
         if field == "email":
-            value = value.lower()
+            try:
+                logger.info("save_field: launching GetEmailTask for email collection")
+                email_task = GetEmailTask(
+                    instructions=(
+                        "Ask the user for their email address. "
+                        "The user may speak in Portuguese or English. "
+                        "In Portuguese: 'arroba' means '@', 'ponto' means '.', "
+                        "'gmail ponto com' means 'gmail.com'. "
+                        "Collect the email, confirm it back to the user and ask if it is correct."
+                    ),
+                )
+                result = await email_task
+                value = result.email.strip().lower()
+                logger.info(f"save_field: GetEmailTask returned email='{value}'")
+            except Exception as e:
+                logger.warning(f"save_field: GetEmailTask failed ({e}), using STT value='{value}'")
+                value = value.strip().lower()
+
+            # Final validation as safety net
             if "@" not in value or "." not in value.split("@")[-1]:
                 return (
                     f"[INTERNAL] '{value}' nao parece um e-mail valido. "
-                    "Peca ao usuario para soletrar novamente."
+                    "Peca ao usuario para soletrar o e-mail letra por letra."
                 )
 
         # Birth year: must be 4-digit year
@@ -1450,18 +1481,58 @@ class DefaultAgent(Agent):
         self._rebuild_instructions()
 
         next_step = {
-            "chosen_date":  "[INTERNAL] Data salva. Agora peca o nome completo de forma calorosa.",
-            "full_name":    "[INTERNAL] Nome salvo. Agora peca o numero de WhatsApp de forma natural. NAO mencione DDD ou codigo de area.",
-            "phone":        "[INTERNAL] WhatsApp salvo. Agora peca o e-mail de forma leve — a pessoa pode soletrar se preferir. NAO leia o e-mail de volta depois de receber.",
-            "email":        "[INTERNAL] E-mail salvo. Agora peca o ano de nascimento — use o idioma detectado do usuario.",
-            "birth_year":   "[INTERNAL] Ano salvo. Agora peca o bairro.",
-            "neighborhood": "[INTERNAL] Bairro salvo. Agora peca a cidade.",
-            "city":         (
+            "chosen_date": (
+                "[INTERNAL] Data salva. "
+                "PT: Reaja de forma calorosa — algo como 'Ótima escolha!' ou 'Perfeito, [data] anotada!' — "
+                "e em seguida pergunte o nome completo de forma natural, como 'E o seu nome completo?' "
+                "EN: React warmly — something like 'Great choice!' or 'Perfect, got [date]!' — "
+                "then ask naturally for their full name, like 'And your full name?'"
+            ),
+            "full_name": (
+                "[INTERNAL] Nome salvo. "
+                "PT: Reaja com algo como 'Que nome bonito, [nome]!' ou 'Anotei, [nome]!' — "
+                "depois pergunte o WhatsApp de forma natural, sem mencionar DDD: 'E o seu WhatsApp?' "
+                "EN: React with something like 'Lovely name, [name]!' or 'Got it, [name]!' — "
+                "then ask naturally for their WhatsApp: 'And your WhatsApp number?'"
+            ),
+            "phone": (
+                "[INTERNAL] WhatsApp salvo. "
+                "PT: Reaja com algo como 'Ótimo, já tenho o WhatsApp!' — "
+                "depois pergunte o e-mail de forma leve: 'E o seu e-mail?' Nao instrua como fornecer. NAO leia de volta. "
+                "EN: React with something like 'Perfect, got your WhatsApp!' — "
+                "then ask lightly: 'And your email address?' Do not instruct how to provide it. Do NOT read it back."
+            ),
+            "email": (
+                "[INTERNAL] E-mail salvo. "
+                "PT: Reaja brevemente — 'Perfeito!' ou 'Anotei!' — "
+                "depois pergunte o ano de nascimento de forma descontraída: 'E qual é o seu ano de nascimento?' "
+                "EN: React briefly — 'Got it!' or 'Perfect!' — "
+                "then ask casually: 'And what year were you born?'"
+            ),
+            "birth_year": (
+                "[INTERNAL] Ano salvo. "
+                "PT: Reaja brevemente — 'Certo!' ou 'Ótimo!' — "
+                "depois pergunte o bairro de forma natural: 'E o seu bairro?' "
+                "EN: React briefly — 'Got it!' or 'Great!' — "
+                "then ask naturally: 'And what neighborhood are you in?'"
+            ),
+            "neighborhood": (
+                "[INTERNAL] Bairro salvo. "
+                "PT: Reaja brevemente — 'Bacana!' ou 'Certo!' — "
+                "depois pergunte a cidade de forma leve: 'E a cidade?' "
+                "EN: React briefly — 'Nice!' or 'Got it!' — "
+                "then ask lightly: 'And your city?'"
+            ),
+            "city": (
                 "[INTERNAL] Todos os 7 campos salvos. "
-                "Faca um resumo de todos os campos em um turno so: data, nome completo, WhatsApp, e-mail, ano de nascimento, bairro, cidade. "
-                "Fale como pessoa resumindo — nao como formulario. Pergunte se esta tudo certo. "
-                "Se SIM → chame register_for_class imediatamente com todos os valores. "
-                "Se NAO → pergunte o que corrigir, corrija com save_field, depois releia o resumo naturalmente."
+                "PT: Faca um resumo caloroso e conversacional — como alguem lendo de volta pra um amigo, nao imprimindo um recibo. "
+                "Use o primeiro nome. Algo como: 'Entao [nome], deixa eu confirmar aqui — voce vai na aula do dia [data], "
+                "tenho seu WhatsApp como [telefone], e-mail [email], nascido(a) em [ano], do [bairro] em [cidade]. Ta tudo certinho assim?' "
+                "EN: Give a warm, conversational summary — like reading back to a friend, not printing a receipt. "
+                "Use their first name. Something like: 'Okay [name], let me read this back — you're joining us on [date], "
+                "WhatsApp [phone], email [email], born in [year], from [neighborhood] in [city]. Does that all look right?' "
+                "Se SIM / If YES → call register_for_class immediately with all values. "
+                "Se NAO / If NO → ask what to fix, use save_field, then re-read the summary naturally."
             ),
         }.get(field, "")
 
@@ -1668,13 +1739,16 @@ class DefaultAgent(Agent):
         # ── End PostgreSQL save ────────────────────────────────────────────────
 
         return (
-            f"[INTERNAL] Inscricao confirmada: {resolved_name} em {readable_slot}. "
-            f"UID da reserva: {uid}. "
-            "Reaja como pessoa genuinamente feliz por eles — nao como robo de confirmacao. "
-            "Use o primeiro nome deles. Mencione os lembretes de forma natural, nao como aviso legal. "
-            "Seja breve e caloroso — maximo 2-3 frases. "
-            "IMPORTANTE: A inscricao esta CONCLUIDA. NAO pergunte se querem se inscrever novamente. "
-            "Se o usuario mencionar inscricao depois, so retome se ele EXPLICITAMENTE pedir nova inscricao."
+            f"[INTERNAL] Inscricao confirmada: {resolved_name} em {readable_slot}. UID: {uid}. "
+            "PT: Reaja com genuina alegria — algo como 'Prontinho, [nome]! Tudo confirmado!' ou "
+            "'Feito! Voce esta inscrito(a) na aula de [data]!' Use o primeiro nome. "
+            "Mencione os lembretes de forma leve e natural — como 'Voce vai receber um lembrete antes da aula!' — nao como aviso legal. "
+            "Seja breve e caloroso, maximo 2 frases. "
+            "EN: React with genuine happiness — something like 'All done, [name]! You're officially in!' or "
+            "'You're all set, [name]! See you on [date]!' Use their first name. "
+            "Mention the reminders naturally — like 'You'll get a reminder before the class!' — not as a legal notice. "
+            "Keep it brief and warm, max 2 sentences. "
+            "IMPORTANTE/IMPORTANT: Inscricao CONCLUIDA — NAO pergunte se querem se inscrever de novo."
         )
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -1732,19 +1806,25 @@ class DefaultAgent(Agent):
 
             return (
                 "[INTERNAL] Cancelamento realizado com sucesso. "
-                "Reaja de forma calorosa e humana — nao como uma notificacao de cancelamento. "
-                "Seja breve, genuina e deixe a porta aberta para quando quiser se inscrever de novo."
+                "PT: Reaja com calor — algo como 'Prontinho, cancelei aqui pra voce!' ou 'Feito! Sua inscricao foi cancelada.' "
+                "Seja breve. Deixe a porta aberta de forma natural — algo como 'Se quiser se inscrever de novo em outro momento, e so me chamar!' "
+                "EN: React warmly — something like 'Done, I've cancelled that for you!' or 'All sorted! Your registration is cancelled.' "
+                "Keep it brief. Leave the door open naturally — something like 'If you ever want to sign up again, just let me know!'"
             )
         if failed and not cancelled:
             return (
                 "[INTERNAL] Cancelamento falhou tecnicamente. "
-                "Reaja como pessoa — algo como 'Ih, travou aqui do meu lado... "
-                "Pode tentar de novo em instantes ou entrar no site. Desculpa o transtorno!'"
+                "PT: Reaja como pessoa — algo como 'Ih, deu um probleminha aqui do meu lado... "
+                "Pode tentar de novo em instantes ou entrar direto no site? Desculpa o sufoco!' "
+                "EN: React like a person — something like 'Oh no, something went wrong on my end... "
+                "Could you try again in a moment, or head to the website directly? So sorry about that!'"
             )
         return (
             "[INTERNAL] Cancelamento parcial — alguns funcionaram, outros nao. "
-            "Diga ao usuario de forma natural que conseguiu cancelar parte mas teve um probleminha com o resto. "
-            "Sugira verificar no site."
+            "PT: Diga de forma natural — algo como 'Consegui cancelar a maioria, mas um deu problema aqui... "
+            "Pode verificar no site pra garantir que ta tudo certo?' "
+            "EN: Say naturally — something like 'I managed to cancel most of them, but one didn't go through... "
+            "Could you check on the website just to be sure?'"
         )
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -1914,9 +1994,13 @@ class DefaultAgent(Agent):
         # ── End PostgreSQL update ─────────────────────────────────────────────
 
         return (
-            f"[INTERNAL] Reagendamento confirmado. Nova aula: {readable_slot}. UID da reserva inalterado: {uid}. "
-            "Reaja como pessoa que resolveu algo para um amigo — genuinamente aliviada e feliz. "
-            "Use o nome deles se souber. Mencione os lembretes naturalmente. Seja breve e caloroso."
+            f"[INTERNAL] Reagendamento confirmado. Nova aula: {readable_slot}. UID inalterado: {uid}. "
+            "PT: Reaja como pessoa que resolveu algo pra um amigo — aliviada e genuinamente feliz. "
+            "Algo como 'Prontinho, [nome]! Ja reagendei pra [data]!' ou 'Feito! Nova data confirmada!' "
+            "Use o primeiro nome se souber. Mencione o lembrete de forma leve. Maximo 2 frases. "
+            "EN: React like someone who just sorted something for a friend — relieved and genuinely pleased. "
+            "Something like 'All done, [name]! I've moved you to [date]!' or 'Done! Your new date is confirmed!' "
+            "Use their first name if you know it. Mention the reminder lightly. Max 2 sentences."
         )
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -2096,10 +2180,11 @@ async def entrypoint(ctx: JobContext):
 
     session = AgentSession(
         stt=inference.STT(model="deepgram/nova-3", language="multi"),
+
         llm=inference.LLM(model="openai/gpt-4.1-mini"),
         tts=inference.TTS(
             model="cartesia/sonic-3",
-            voice="9626c31c-bec5-4cca-baa8-f8ba9e84c8bc",
+            voice="2f4d204f-a5dc-4196-81bc-155986b76ab6",
         ),
         turn_detection=MultilingualModel(),
         vad=ctx.proc.userdata["vad"],
@@ -2123,14 +2208,8 @@ async def entrypoint(ctx: JobContext):
     await session.start(
         agent=DefaultAgent(),
         room=ctx.room,
-        room_options=room_io.RoomOptions(
-            audio_input=room_io.AudioInputOptions(
-                noise_cancellation=lambda params: (
-                    noise_cancellation.BVCTelephony()
-                    if params.participant.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
-                    else noise_cancellation.BVC()
-                ),
-            ),
+        room_input_options=room_io.RoomInputOptions(
+            noise_cancellation=noise_cancellation.BVC(),
         ),
     )
 

@@ -187,46 +187,58 @@ class FSM:
             c = self.ctx
             if self._user_language == "en":
                 return (
-                    base + " [STATE: final confirmation] All fields collected. "
-                    "Give a warm human summary — not like a receipt printout. "
-                    f"Data: date={c.chosen_date}, name={c.full_name}, WhatsApp={c.phone}, "
+                    base + " [STATE: final confirmation] All 7 fields are in. "
+                    "Read them back like a friend catching up — warm, natural, no robotic list. "
+                    "Use their first name and weave the details into real sentences, for example: "
+                    "'Okay [name], let me just make sure I've got everything — you're coming on [date], right? "
+                    "WhatsApp [phone], email [email], born in [birth_year], from [neighborhood] in [city]. "
+                    "That all look good to you?' Then wait for their answer. "
+                    f"Actual values: date={c.chosen_date}, name={c.full_name}, WhatsApp={c.phone}, "
                     f"email={c.email}, birth year={c.birth_year}, neighborhood={c.neighborhood}, city={c.city}. "
-                    "If the person confirms (YES) → call register_for_class immediately with all values. "
-                    "If NO → ask what to fix, use save_field, then re-read the summary naturally."
+                    "If YES → call register_for_class immediately with all values. "
+                    "If NO → ask warmly what needs fixing, correct it with save_field, re-read just the changed part — don't start over."
                 )
             return (
-                base + " [ESTADO: confirmacao final] Todos os campos foram coletados. "
-                "Faca o resumo como pessoa encerrando — nao como impressora de recibo. "
+                base + " [ESTADO: confirmacao final] Todos os 7 campos foram coletados. "
+                "Faca um resumo caloroso e conversacional — como alguem lendo de volta pra um amigo, NAO como impressora de recibo. "
+                "Use o primeiro nome. Conecte os campos de forma natural, por exemplo: "
+                "'Entao [nome], deixa eu confirmar aqui — voce vai na aula do dia [data], ne? "
+                "Tenho seu WhatsApp como [telefone], e-mail [email], nascido(a) em [ano], "
+                "do [bairro] em [cidade]. Ta tudo certinho assim?' "
                 f"Dados: data={c.chosen_date}, nome={c.full_name}, WhatsApp={c.phone}, "
                 f"e-mail={c.email}, nascimento={c.birth_year}, bairro={c.neighborhood}, cidade={c.city}. "
-                "Se a pessoa confirmar (SIM) → chame register_for_class imediatamente com todos os valores. "
+                "Se SIM → chame register_for_class imediatamente com todos os valores. "
                 "Se NAO → pergunte o que corrigir, use save_field, depois releia o resumo naturalmente."
             )
 
         if self.state == State.REG_CONFIRM:
             if self._user_language == "en":
                 return (
-                    base + " [STATE: registration confirmed] Registration was just confirmed. "
-                    "React with genuine joy for them — use their first name if you know it. "
-                    "Mention the reminders naturally, not as a legal notice. Be brief and warm."
+                    base + " [STATE: registration confirmed] Registration just went through. "
+                    "React with genuine joy — something like 'You're all set, [name]!' or 'Done! You're officially in!' "
+                    "Use their first name. Mention reminders as a friendly heads-up, not a legal notice — "
+                    "like 'You'll get a reminder before the class!' Be brief and warm. Max 2 sentences."
                 )
             return (
                 base + " [ESTADO: inscricao concluida] Inscricao acabou de ser confirmada. "
-                "Reaja com genuina alegria pela pessoa — use o primeiro nome se souber. "
-                "Mencione os lembretes naturalmente, nao como aviso. Seja breve e caloroso."
+                "Reaja com genuina alegria — algo como 'Prontinho, [nome]! Tudo confirmado!' ou 'Feito! Voce ja esta inscrito(a)!' "
+                "Use o primeiro nome. Mencione os lembretes como aviso amigavel — "
+                "tipo 'Voce vai receber um lembrete antes da aula!' — nao como termo legal. Maximo 2 frases."
             )
 
         if self.state == State.REG_DONE:
             if self._user_language == "en":
                 return (
                     base + " [STATE: post-registration] Registration is complete. "
-                    "The person is already registered — do NOT suggest or ask about registering again unless they explicitly bring it up. "
-                    "Ask warmly if there is anything else they would like to know about the class."
+                    "Do NOT bring up registering again — they're already in. "
+                    "Close like a friend wrapping up a call — warm and natural. "
+                    "Something like 'Is there anything else I can help you with?' or 'Any other questions about the class?'"
                 )
             return (
                 base + " [ESTADO: pos-inscricao] Inscricao ja foi concluida. "
-                "NAO sugira nem pergunte sobre se inscrever de novo — a pessoa JA esta inscrita. "
-                "Pergunte se ha mais alguma coisa que ela queira saber sobre a aula, de forma calorosa e natural."
+                "NAO sugira nem pergunte sobre inscrever de novo — a pessoa JA esta inscrita. "
+                "Encerre como alguem encerrando uma conversa de forma natural e calorosa. "
+                "Algo como 'Tem mais alguma coisa que posso te ajudar?' ou 'Alguma duvida sobre a aula?'"
             )
 
         if self.state == State.MANAGE_ASK_PHONE:
@@ -339,16 +351,18 @@ class FSM:
         if self.state == State.MANAGE_RESCHEDULE_DONE:
             if self._user_language == "en":
                 return (
-                    base + " [STATE: reschedule complete] Reschedule was completed successfully. "
-                    "React like someone who just solved something for a friend — relieved and happy. "
-                    "Use their name if you know it. Mention the reminder naturally. "
-                    "Close like a real conversation, not a support ticket."
+                    base + " [STATE: reschedule complete] Reschedule went through successfully. "
+                    "React like someone who just sorted something for a friend — genuinely relieved and happy. "
+                    "Something like 'All sorted, [name]! You're on for [new date] now.' "
+                    "Use their first name if you know it. Mention the reminder lightly. "
+                    "Close warm and brief — no support-ticket language."
                 )
             return (
                 base + " [ESTADO: reagendamento concluido] Reagendamento foi feito com sucesso. "
-                "Reaja como pessoa que resolveu algo para um amigo — aliviada e feliz. "
-                "Use o nome deles se souber. Mencione o lembrete naturalmente. "
-                "Encerre como conversa real, nao como ticket de suporte."
+                "Reaja como pessoa que resolveu algo pra um amigo — aliviada e genuinamente feliz. "
+                "Algo como 'Prontinho, [nome]! Ja ta marcado pra [nova data]!' "
+                "Use o primeiro nome se souber. Mencione o lembrete de forma leve. "
+                "Encerre de forma calorosa e breve — sem linguagem de suporte tecnico."
             )
 
         return base + " Como posso te ajudar?"
@@ -359,72 +373,137 @@ class FSM:
         import random
         pt_prompts = {
             State.REG_ASK_DATE:         [
-                "Voce ainda ta ai? Qual das datas funciona melhor pra voce?",
-                "Oi, continuo aqui! Alguma das datas te agrada?",
+                "Oi, continua comigo? Qual dessas datas funciona melhor pra voce?",
+                "Ainda to aqui! Alguma das datas te agrada?",
+                "Sem pressa — me fala qual data fica melhor pra voce!",
             ],
             State.REG_ASK_NAME:         [
                 "Oi, pode me dizer seu nome completo quando quiser!",
-                "Ainda to aqui — pode falar seu nome?",
+                "Ainda to aqui — pode falar o seu nome?",
+                "Sem pressa! E o seu nome completo?",
             ],
             State.REG_ASK_PHONE:        [
-                "Pode falar o numero do WhatsApp?",
-                "E o seu WhatsApp?",
+                "Pode me passar o WhatsApp quando quiser!",
+                "Ainda to aqui — e o seu WhatsApp?",
+                "Sem pressa, me fala o numero do WhatsApp.",
             ],
             State.REG_ASK_EMAIL:        [
-                "E o e-mail? Pode soletrar se preferir.",
-                "Pode me passar o e-mail?",
+                "E o e-mail? Pode falar quando estiver pronto!",
+                "Ainda to aqui — pode me passar o e-mail?",
+                "Sem pressa! E o seu e-mail?",
             ],
             State.REG_ASK_BIRTH_YEAR:   [
-                "E o ano que voce nasceu?",
-                "Pode me dizer o ano de nascimento?",
+                "E o ano que voce nasceu? Pode me dizer!",
+                "Ainda to aqui — qual e o seu ano de nascimento?",
+                "Sem pressa! E o ano de nascimento?",
             ],
             State.REG_ASK_NEIGHBORHOOD: [
-                "Pode me dizer o bairro?",
-                "E o bairro?",
+                "Pode me dizer o bairro quando quiser!",
+                "Ainda to aqui — e o seu bairro?",
+                "E o bairro? Pode falar!",
             ],
             State.REG_ASK_CITY:         [
-                "E a cidade?",
-                "Pode me dizer a cidade?",
+                "E a cidade? Pode me dizer!",
+                "Ainda to aqui — e a sua cidade?",
+                "Sem pressa, e a cidade?",
             ],
             State.REG_ASK_CONSENT:      [
-                "Ta tudo certinho nos seus dados?",
-                "Posso confirmar as informacoes?",
+                "Ta tudo certinho nos seus dados? E so me confirmar!",
+                "Ainda to aqui — pode confirmar se ta tudo certo?",
+                "Me fala se esta tudo certo com as informacoes!",
             ],
-            State.REG_CONFIRM:              [
-                "Posso confirmar sua inscricao?",
-                "Tudo certo pra confirmar?",
+            State.REG_CONFIRM:          [
+                "Posso finalizar a sua inscricao?",
+                "Ainda to aqui — tudo certo pra confirmar?",
+                "E so me dar o OK e ja confirmo!",
             ],
-            State.MANAGE_ASK_PHONE:         [
+            State.MANAGE_ASK_PHONE:     [
                 "Qual e-mail voce usou quando se inscreveu?",
-                "Pode me passar o e-mail de cadastro?",
+                "Pode me passar o e-mail de cadastro quando quiser!",
+                "Ainda to aqui — me fala o e-mail que voce usou.",
             ],
-            State.MANAGE_CANCEL_CONFIRM:    [
-                "Posso ir em frente com o cancelamento?",
-                "Confirma o cancelamento?",
+            State.MANAGE_CANCEL_CONFIRM: [
+                "Pode me contar o motivo do cancelamento quando quiser?",
+                "Ainda to aqui — me diz por que quer cancelar, pode ser?",
+                "Sem pressa — qual seria o motivo do cancelamento?",
             ],
-            State.MANAGE_RESCHEDULE_DATE:   [
-                "Qual data nova funciona pra voce?",
-                "Alguma das datas te funciona?",
+            State.MANAGE_RESCHEDULE_DATE: [
+                "Qual data nova funciona melhor pra voce?",
+                "Ainda to aqui — alguma das datas te funciona?",
+                "Me fala qual data prefere e ja marco pra voce!",
             ],
             State.MANAGE_RESCHEDULE_REASON: [
                 "Pode me contar o motivo do reagendamento?",
-                "E o motivo, pode me dizer?",
+                "Ainda to aqui — me diz por que quer reagendar?",
+                "Sem pressa — qual seria o motivo?",
             ],
         }
         en_prompts = {
-            State.REG_ASK_DATE:         ["Still there? Which date works best for you?"],
-            State.REG_ASK_NAME:         ["Hi, still here! Can you tell me your full name?"],
-            State.REG_ASK_PHONE:        ["What's your WhatsApp number?"],
-            State.REG_ASK_EMAIL:        ["What's your email?"],
-            State.REG_ASK_BIRTH_YEAR:   ["And your year of birth?"],
-            State.REG_ASK_NEIGHBORHOOD: ["What neighborhood are you in?"],
-            State.REG_ASK_CITY:         ["And your city?"],
-            State.REG_ASK_CONSENT:      ["Does everything look correct?"],
-            State.REG_CONFIRM:          ["Ready to confirm your registration?"],
-            State.MANAGE_ASK_PHONE:     ["Which email did you use when you registered?"],
-            State.MANAGE_CANCEL_CONFIRM:["Shall I go ahead with the cancellation?"],
-            State.MANAGE_RESCHEDULE_DATE:["Which new date works for you?"],
-            State.MANAGE_RESCHEDULE_REASON:["Can you tell me why you'd like to reschedule?"],
+            State.REG_ASK_DATE:         [
+                "Still there? Which of those days works best for you?",
+                "Hey, still here! Does any of those days work for you?",
+                "No rush — which day would you prefer?",
+            ],
+            State.REG_ASK_NAME:         [
+                "Still here! What's your full name?",
+                "Hey, still with you — can you tell me your full name?",
+                "No rush! And your full name is?",
+            ],
+            State.REG_ASK_PHONE:        [
+                "What's your WhatsApp number whenever you're ready!",
+                "Still here — and your WhatsApp number?",
+                "No rush! What's your WhatsApp?",
+            ],
+            State.REG_ASK_EMAIL:        [
+                "And your email? Just whenever you're ready!",
+                "Still here — what's your email address?",
+                "No rush! And your email?",
+            ],
+            State.REG_ASK_BIRTH_YEAR:   [
+                "And what year were you born? Just whenever!",
+                "Still here — what's your year of birth?",
+                "No rush! And your birth year?",
+            ],
+            State.REG_ASK_NEIGHBORHOOD: [
+                "What neighborhood are you in? Whenever you're ready!",
+                "Still here — and your neighborhood?",
+                "No rush! What's your neighborhood?",
+            ],
+            State.REG_ASK_CITY:         [
+                "And your city? Just whenever you're ready!",
+                "Still here — what city are you in?",
+                "No rush! And your city?",
+            ],
+            State.REG_ASK_CONSENT:      [
+                "Does everything look right? Just say yes and we're good to go!",
+                "Still here — does all that information look correct?",
+                "Just let me know if everything's right!",
+            ],
+            State.REG_CONFIRM:          [
+                "Ready to lock in your registration?",
+                "Still here — just say the word and I'll confirm you!",
+                "Shall I go ahead and confirm everything?",
+            ],
+            State.MANAGE_ASK_PHONE:     [
+                "Which email did you use when you registered?",
+                "Still here — can you give me your registration email?",
+                "No rush! What email did you sign up with?",
+            ],
+            State.MANAGE_CANCEL_CONFIRM: [
+                "Can you tell me why you'd like to cancel? Whenever you're ready.",
+                "Still here — what's the reason for cancelling?",
+                "No rush — just let me know why you'd like to cancel.",
+            ],
+            State.MANAGE_RESCHEDULE_DATE: [
+                "Which new day works best for you?",
+                "Still here — does any of those days work for you?",
+                "No rush! Which day would you prefer?",
+            ],
+            State.MANAGE_RESCHEDULE_REASON: [
+                "Can you tell me why you'd like to reschedule?",
+                "Still here — what's the reason for the change?",
+                "No rush — just let me know why you'd like to reschedule.",
+            ],
         }
         prompts = en_prompts if self._user_language == "en" else pt_prompts
         options = prompts.get(self.state, ["Oi, voce ainda ta ai?"])
